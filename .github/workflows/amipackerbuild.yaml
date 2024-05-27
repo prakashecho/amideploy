@@ -1,63 +1,44 @@
-packer {
-  required_plugins {
-    amazon = {
-      version = ">=1.2.1"
-      source  = "github.com/hashicorp/amazon"
-    }
-  }
-}
+name: packer
 
-source "amazon-ebs" "ubuntu" {
-  access_key     = ""
-  secret_key     = ""
-  ami_name       = "Jenkinss"
-  instance_type  = "t2.small"
-  region         = "us-east-1"
-  source_ami     = "ami-04b70fa74e45c3917"
-  ssh_username   = "ubuntu"
-  encrypt_boot   = true
-  kms_key_id     = aws_kms_key.jenkins_kms_key.arn
-}
+on:
+  push:
+permissions:
+  id-token: write # This is required for requesting the JWT
 
-resource "aws_kms_key" "jenkins_kms_key" {
-  description              = "KMS key for encrypting Jenkins AMI"
-  deletion_window_in_days  = 7
-  enable_key_rotation      = true
-  is_enabled               = true
-  multi_region             = false
-  enable_key_rotation      = true
-  policy                   = data.aws_iam_policy_document.kms_key_policy.json
-}
+env:
 
-data "aws_iam_policy_document" "kms_key_policy" {
-  statement {
-    sid       = "Enable IAM User Permissions"
-    effect    = "Allow"
-    actions   = ["kms:*"]
-    resources = ["*"]
+  PRODUCT_VERSION: "1.10.0" # or:   "latest"
+  
+  
+jobs:
+  packer:
+    runs-on: ubuntu-latest
+    name: Run Packer
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    principals {
-      type        = "AWS"
-      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
-    }
-  }
-}
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4.0.2
+        with:
+          role-to-assume: arn:aws:iam::874599947932:role/gitaws
+          role-session-name: github-actions
+          aws-region: us-east-1  
 
-build {
-  name = "jenkinss"
-  sources = ["source.amazon-ebs.ubuntu"]
+      - name: Setup `packer`
+        uses: hashicorp/setup-packer@main
+        id: setup
+        with:
+          version: ${{ env.PRODUCT_VERSION }}
 
-  provisioner "shell" {
-    inline = [
-      "sudo apt update -y",
-      "sudo apt install openjdk-11-jdk -y",
-      "sudo apt install maven wget unzip -y",
-      "curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null",
-      "echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/ | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null",
-      "sudo apt-get update -y",
-      "sudo apt-get install jenkins -y",
-      "sudo ufw enable ",
-      "sudo ufw allow 8080/tcp"
-    ]
-  }
-}
+      - name: Run `packer init`
+        id: init
+        run: "packer init ./jenkinsubuntu.pkr.hcl"
+
+      - name: Run `packer validate`
+        id: validate
+        run: "packer validate ./jenkinsubuntu.pkr.hcl"
+
+      - name: Run 'packer build'
+        id: build
+        run: packer build  ./jenkinsubuntu.pkr.hcl        
