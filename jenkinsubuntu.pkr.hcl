@@ -25,7 +25,6 @@ resource "aws_kms_key" "jenkins_kms_key" {
   enable_key_rotation      = true
   is_enabled               = true
   multi_region             = false
-  enable_key_rotation      = true
   policy                   = data.aws_iam_policy_document.kms_key_policy.json
 }
 
